@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ArpiDent — современная стоматология в Химках</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="site-header" id="header">
+    <div class="container header-inner">
+      <a class="brand" href="#home" onclick="showSection('home')" aria-label="ArpiDent">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 48 48"><path d="M24 5c-4.4-4-13.5-2.3-16.5 4.7-2.6 6.2.8 12.1 3.6 16.1 2.1 3 2.9 6.7 3.7 10.2.8 3.8 1.7 7 4 7 2.4 0 3.1-4.5 4.2-8.4.3-1.2.7-2.1 1-2.1s.7.9 1 2.1c1.1 3.9 1.8 8.4 4.2 8.4 2.3 0 3.2-3.2 4-7 .8-3.5 1.6-7.2 3.7-10.2 2.8-4 6.2-9.9 3.6-16.1C37.5 2.7 28.4 1 24 5Z"/></svg>
+        </span>
+        <span class="brand-text"><strong>ArpiDent</strong><small>клиника улыбок</small></span>
+      </a>
+
+      <nav class="desktop-nav" aria-label="Основная навигация">
+        <a href="#home" data-nav="home" onclick="showSection('home')">Главная</a>
+        <a href="#about" data-nav="about" onclick="showSection('about')">О клинике</a>
+        <a href="#services" data-nav="services" onclick="showSection('services')">Услуги</a>
+        <a href="#doctors" data-nav="doctors" onclick="showSection('doctors')">Врачи</a>
+        <a href="#reviews" data-nav="reviews" onclick="showSection('reviews')">Отзывы</a>
+        <a href="#contacts" data-nav="contacts" onclick="showSection('contacts')">Контакты</a>
+      </nav>
+
+      <div class="header-actions">
+        <a class="phone" href="tel:+74951284920">+7 (495) 128-49-20</a>
+        <button class="link-btn" onclick="showSection('cabinet')" id="loginLabel">Войти</button>
+        <button class="btn btn-primary btn-small" onclick="showSection('booking')">Записаться</button>
+        <button class="burger" onclick="toggleMobile()" aria-label="Открыть меню"><span></span><span></span></button>
+      </div>
+    </div>
+    <div class="mobile-nav" id="mobileNav">
+      <a onclick="showSection('home');toggleMobile(false)">Главная</a>
+      <a onclick="showSection('about');toggleMobile(false)">О клинике</a>
+      <a onclick="showSection('services');toggleMobile(false)">Услуги</a>
+      <a onclick="showSection('doctors');toggleMobile(false)">Врачи</a>
+      <a onclick="showSection('reviews');toggleMobile(false)">Отзывы</a>
+      <a onclick="showSection('contacts');toggleMobile(false)">Контакты</a>
+      <a onclick="showSection('cabinet');toggleMobile(false)">Кабинет</a>
+    </div>
+  </header>
+
+  <main>
+    <section class="page active" id="section-home">
+      <div class="container">
+        <div class="hero">
+          <div class="hero-copy">
+            <div class="eyebrow">Современная стоматология</div>
+            <h1>С заботой о вашей улыбке</h1>
+            <p>Комплексный подход, понятные цены и удобная онлайн-запись в клинику ArpiDent в Химках.</p>
+            <div class="hero-buttons">
+              <button class="btn btn-primary" onclick="showSection('booking')">Записаться онлайн</button>
+              <button class="btn btn-secondary" onclick="showSection('services')">Посмотреть услуги</button>
+            </div>
+          </div>
+          <div class="hero-visual" aria-hidden="true">
+            <div class="hero-orb"></div>
+            <div class="tooth-large">
+              <svg viewBox="0 0 180 200">
+                <path d="M90 27c-18-19-54-20-72 3C-4 59 14 96 35 121c8 10 11 24 14 37 3 14 8 29 19 29 12 0 14-23 18-37 1-5 2-9 4-9s3 4 4 9c4 14 6 37 18 37 11 0 16-15 19-29 3-13 6-27 14-37 21-25 39-62 17-91-18-23-54-22-72-3Z" fill="url(#g)"/>
+                <defs><linearGradient id="g" x1="20" y1="10" x2="160" y2="190"><stop stop-color="#fff"/><stop offset="1" stop-color="#dff8ff"/></linearGradient></defs>
+              </svg>
+            </div>
+            <div class="orbit"></div>
+            <div class="mini-card"><b>15+ лет</b><span>заботимся о ваших улыбках</span></div>
+          </div>
+        </div>
+
+        <div class="trust-strip">
+          <div><span class="line-icon equipment"></span><b>Современное оборудование</b></div>
+          <div><span class="line-icon doctor"></span><b>Опытные врачи</b></div>
+          <div><span class="line-icon shield"></span><b>Без боли и стресса</b></div>
+          <div><span class="line-icon star"></span><b>Рейтинг 4.9 из 5</b></div>
+        </div>
+
+        <div class="section-head compact"><span></span><h2>Направления лечения</h2><span></span></div>
+        <div class="treatment-grid" id="homeTreatments"></div>
+
+        <div class="split-block">
+          <div>
+            <div class="section-row"><h2>Наши врачи</h2><button class="ghost-link" onclick="showSection('doctors')">Все врачи</button></div>
+            <div class="doctor-preview-grid" id="homeDoctors"></div>
+          </div>
+          <div class="booking-card-mini">
+            <h2>Запись на приём онлайн</h2>
+            <p>Выберите услугу, врача и свободное время. Это займёт меньше минуты.</p>
+            <button class="btn btn-primary full" onclick="showSection('booking')">Перейти к записи</button>
+          </div>
+        </div>
+
+        <div class="section-row reviews-row-title"><h2>Отзывы пациентов</h2><button class="ghost-link" onclick="showSection('reviews')">Все отзывы</button></div>
+        <div class="home-reviews" id="homeReviews"></div>
+      </div>
+    </section>
+
+    <section class="page" id="section-about">
+      <div class="container about-page">
+        <div class="about-hero page-card">
+          <div class="about-copy">
+            <div class="eyebrow">О клинике</div>
+            <h1>ArpiDent — современная стоматология в Химках</h1>
+            <p>Клиника оказывает стоматологические услуги для взрослых и детей: лечение кариеса, имплантацию, ортодонтию, протезирование, профессиональную гигиену и профилактику.</p>
+            <p>Для учебного проекта сайт представлен как рабочее веб-приложение: пациент может выбрать врача, свободное окно и записаться онлайн, а администратор — управлять записями через отдельную панель.</p>
+          </div>
+          <div class="about-side-card">
+            <b>ArpiDent</b>
+            <span>частная стоматологическая клиника</span>
+            <div class="about-mini-stat"><strong>09:00–21:00</strong><small>ежедневный приём</small></div>
+          </div>
+        </div>
+
+        <div class="about-grid about-grid-wide">
+          <div class="info-card"><b>Адрес</b><span>г. Химки, ул. Мельникова, 15</span></div>
+          <div class="info-card"><b>График</b><span>ежедневно, 09:00–21:00</span></div>
+          <div class="info-card"><b>Формат</b><span>частная медицинская организация</span></div>
+          <div class="info-card"><b>Система</b><span>запись, кабинет пациента и отдельная админ-панель</span></div>
+        </div>
+
+        <div class="about-feature-grid">
+          <article>
+            <span class="line-icon equipment"></span>
+            <h3>Комплексный подход</h3>
+            <p>Пациент видит услуги, врачей, стоимость и доступное время до оформления записи.</p>
+          </article>
+          <article>
+            <span class="line-icon doctor"></span>
+            <h3>Выбор специалиста</h3>
+            <p>В карточках врачей указаны специализация, рейтинг и стаж, чтобы пациенту было проще выбрать врача.</p>
+          </article>
+          <article>
+            <span class="line-icon shield"></span>
+            <h3>Контроль расписания</h3>
+            <p>Система не даёт выбрать занятое или прошедшее время и передаёт запись в базу данных.</p>
+          </article>
+        </div>
+
+        <div class="about-text-panel">
+          <h2>Как устроено приложение</h2>
+          <p>Публичная часть сайта предназначена для пациентов: здесь можно изучить направления лечения, посмотреть врачей, прочитать отзывы и записаться на приём. Личный кабинет доступен после входа или регистрации.</p>
+          <p>Административная часть вынесена отдельно и не показывается посетителям сайта. Через неё можно просматривать заявки, менять статусы записей и контролировать расписание клиники.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="page" id="section-services">
+      <div class="container">
+        <div class="page-title-row"><div><div class="eyebrow">Услуги</div><h1>Услуги и цены</h1></div><button class="btn btn-primary" onclick="showSection('booking')">Записаться</button></div>
+        <div class="treatment-grid service-page-grid" id="serviceDirections"></div>
+        <div class="price-list" id="priceList"></div>
+      </div>
+    </section>
+
+    <section class="page" id="section-doctors">
+      <div class="container">
+        <div class="page-title-row"><div><div class="eyebrow">Команда</div><h1>Врачи клиники</h1></div><input class="search" id="doctorSearch" oninput="renderDoctors()" placeholder="Поиск врача или специализации"></div>
+        <div class="doctors-grid" id="doctorsGrid"></div>
+      </div>
+    </section>
+
+    <section class="page" id="section-booking">
+      <div class="container booking-wrap">
+        <div class="booking-intro">
+          <div class="eyebrow">Онлайн-запись</div>
+          <h1>Запишитесь к врачу</h1>
+          <p>Выберите услугу, специалиста, дату и свободное время. Прошедшие и занятые окна недоступны.</p>
+        </div>
+        <div class="booking-panel">
+          <div class="booking-steps"><span class="active" id="step-1">1. Услуга</span><span id="step-2">2. Врач</span><span id="step-3">3. Время</span><span id="step-4">4. Данные</span></div>
+          <div class="booking-step-panel" id="bookingStepContent"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="page" id="section-reviews">
+      <div class="container">
+        <div class="page-title-row"><div><div class="eyebrow">Отзывы</div><h1>Отзывы пациентов</h1></div><button class="btn btn-secondary" onclick="scrollToReviewForm()">Оставить отзыв</button></div>
+        <div class="reviews-layout">
+          <aside class="rating-card">
+            <div class="rating-num" id="avgRating">0.0</div>
+            <div class="stars big" id="avgStars"></div>
+            <p id="ratingCount">0 отзывов</p>
+            <div class="rating-bars" id="ratingBars"></div>
+            <div class="filters">
+              <label>Врач</label><select id="reviewDoctorFilter" onchange="renderReviews()"></select>
+              <label>Услуга</label><select id="reviewServiceFilter" onchange="renderReviews()"></select>
+            </div>
+          </aside>
+          <div>
+            <div class="reviews-list" id="reviewsList"></div>
+            <form class="review-form" id="reviewForm" onsubmit="submitReview(event)">
+              <h3>Оставить отзыв</h3>
+              <div class="form-grid two"><input id="reviewName" placeholder="Ваше имя" required><select id="reviewDoctor" required></select></div>
+              <div class="form-grid two"><select id="reviewService" required></select><select id="reviewRating" required><option value="5">5 — отлично</option><option value="4">4 — хорошо</option><option value="3">3 — нормально</option><option value="2">2 — плохо</option><option value="1">1 — очень плохо</option></select></div>
+              <textarea id="reviewText" placeholder="Ваш отзыв" required></textarea>
+              <button class="btn btn-primary">Опубликовать</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="page" id="section-contacts">
+      <div class="container contacts-grid">
+        <div class="page-card">
+          <div class="eyebrow">Контакты</div>
+          <h1>ArpiDent в Химках</h1>
+          <p>Московская область, г. Химки, ул. Мельникова, 15</p>
+          <div class="contact-list">
+            <a href="tel:+74951284920">+7 (495) 128-49-20</a>
+            <a href="mailto:info@arpident.ru">info@arpident.ru</a>
+            <span>Ежедневно 09:00–21:00</span>
+          </div>
+          <button class="btn btn-primary" onclick="showSection('booking')">Записаться на приём</button>
+        </div>
+        <div class="map-card"><div class="map-pin"></div><b>ArpiDent</b><span>карта-заглушка учебного проекта</span></div>
+      </div>
+    </section>
+
+    <section class="page" id="section-cabinet">
+      <div class="container narrow" id="cabinetContent"></div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-grid">
+      <div><div class="brand footer-brand"><span class="brand-mark"><svg viewBox="0 0 48 48"><path d="M24 5c-4.4-4-13.5-2.3-16.5 4.7-2.6 6.2.8 12.1 3.6 16.1 2.1 3 2.9 6.7 3.7 10.2.8 3.8 1.7 7 4 7 2.4 0 3.1-4.5 4.2-8.4.3-1.2.7-2.1 1-2.1s.7.9 1 2.1c1.1 3.9 1.8 8.4 4.2 8.4 2.3 0 3.2-3.2 4-7 .8-3.5 1.6-7.2 3.7-10.2 2.8-4 6.2-9.9 3.6-16.1C37.5 2.7 28.4 1 24 5Z"/></svg></span><span class="brand-text"><strong>ArpiDent</strong><small>клиника улыбок</small></span></div><p>Современная стоматология для всей семьи. Учебный проект веб-приложения.</p></div>
+      <div><b>Клиника</b><a onclick="showSection('about')">О клинике</a><a onclick="showSection('doctors')">Врачи</a><a onclick="showSection('reviews')">Отзывы</a></div>
+      <div><b>Услуги</b><a onclick="showSection('services')">Терапия</a><a onclick="showSection('services')">Имплантация</a><a onclick="showSection('services')">Ортодонтия</a></div>
+      <div><b>Контакты</b><span>г. Химки, ул. Мельникова, 15</span><span>+7 (495) 128-49-20</span><span>09:00–21:00</span></div>
+    </div>
+  </footer>
+
+  <div class="toast" id="toast"></div>
+  <script src="app.js"></script>
+</body>
+</html>
