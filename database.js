@@ -1,7 +1,9 @@
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
+const { hashPassword } = require('./security');
 
-const dbPath = path.join(__dirname, 'db.json');
+const dbPath = process.env.DB_PATH ? path.resolve(process.env.DB_PATH) : path.join(__dirname, 'db.json');
 
 const seed = {
   doctors: [
@@ -96,9 +98,6 @@ const seed = {
     { id: 4, name: 'Ирина Д.', doctorId: 6, doctor: 'Григорян Лилит Ашотовна', service: 'Профессиональная чистка зубов', rating: 5, date: '15.05.2026', text: 'Записывала ребёнка к стоматологу, понравилось отношение и понятная система записи. Лилит Ашотовна отлично нашла контакт с ребёнком, никакого страха!', createdAt: '2026-05-15T10:00:00.000Z' },
     { id: 5, name: 'Михаил Р.', doctorId: 4, doctor: 'Петросян Анна Григорьевна', service: 'Консультация ортодонта', rating: 5, date: '10.05.2026', text: 'Отличный ортодонт! Анна Григорьевна подробно объяснила варианты лечения, помогла выбрать между брекетами и элайнерами. Очень доволен результатом.', createdAt: '2026-05-10T10:00:00.000Z' }
   ],
-  admins: [
-    { id: 1, login: 'admin', password: 'admin123' }
-  ],
   counters: {
     bookings: 1,
     reviews: 6,
@@ -123,6 +122,14 @@ function migrateDatabase(data) {
     });
   }
   if (!Array.isArray(data.users)) { data.users = []; changed = true; }
+  for (const user of data.users) {
+    if (typeof user.password === 'string') {
+      user.passwordHash = hashPassword(user.password);
+      delete user.password;
+      changed = true;
+    }
+  }
+  if ('admins' in data) { delete data.admins; changed = true; }
   if (!data.counters) { data.counters = {}; changed = true; }
   if (typeof data.counters.users === 'undefined') { data.counters.users = 1; changed = true; }
   if (Array.isArray(data.reviews)) {
@@ -144,16 +151,16 @@ function migrateDatabase(data) {
 
 function ensureDatabase() {
   if (!fs.existsSync(dbPath)) {
-    fs.writeFileSync(dbPath, JSON.stringify(seed, null, 2), 'utf8');
+    fs.writeFileSync(dbPath, JSON.stringify(seed, null, 2), { encoding: 'utf8', mode: 0o600 });
     return;
   }
   try {
     const data = JSON.parse(fs.readFileSync(dbPath, 'utf8'));
     if (migrateDatabase(data)) {
-      fs.writeFileSync(dbPath, JSON.stringify(data, null, 2), 'utf8');
+      writeDb(data);
     }
   } catch (error) {
-    fs.writeFileSync(dbPath, JSON.stringify(seed, null, 2), 'utf8');
+    throw new Error('Не удалось прочитать базу данных; файл сохранён без изменений.', { cause: error });
   }
 }
 
@@ -163,7 +170,13 @@ function readDb() {
 }
 
 function writeDb(data) {
-  fs.writeFileSync(dbPath, JSON.stringify(data, null, 2), 'utf8');
+  const tmp = dbPath + '.' + process.pid + '.' + crypto.randomBytes(4).toString('hex') + '.tmp';
+  try {
+    fs.writeFileSync(tmp, JSON.stringify(data, null, 2), { encoding: 'utf8', mode: 0o600 });
+    fs.renameSync(tmp, dbPath);
+  } finally {
+    if (fs.existsSync(tmp)) fs.unlinkSync(tmp);
+  }
 }
 
 function findService(data, id) {
