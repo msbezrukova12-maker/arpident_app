@@ -1,0 +1,26 @@
+name: Tests
+
+on:
+  push:
+    branches:
+      - security-and-booking-hardening-20261104
+      - main
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify JavaScript syntax
+        run: |
+          node --check server.js
+          node --check database.js
+          node --check security.js
+          node --check public/app.js
+          node --check public/admin.js
+      - name: Run API tests
+        run: npm test
