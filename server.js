@@ -145,8 +145,14 @@ async function handleApi(req, res, pathname, searchParams) {
     const data = readDb();
     const login = String(body.login || '').trim().toLowerCase();
     const password = String(body.password || '');
+    const attemptKey = 'patient:' + (req.socket.remoteAddress || 'unknown') + ':' + login;
+    if (!loginAllowed(attemptKey)) return sendError(res, 429, 'Слишком много попыток. Попробуйте позже.');
     const user = data.users.find(u => (u.email && u.email === login) || u.phone === login);
-    if (!user || !verifyPassword(password, user.passwordHash)) return sendError(res, 401, 'Неверный телефон/email или пароль.');
+    if (!user || !verifyPassword(password, user.passwordHash)) {
+      recordLoginFailure(attemptKey);
+      return sendError(res, 401, 'Неверный телефон/email или пароль.');
+    }
+    resetLoginFailures(attemptKey);
     createSession(req, res, 'user', user.id);
     return sendJson(res, 200, safeUser(user));
   }
