@@ -75,8 +75,30 @@ function sendError(res, status, message) { sendJson(res, status, { error: messag
 function parseBody(req) {
   return new Promise((resolve, reject) => {
     let body = '';
-    req.on('data', chunk => { body += chunk.toString(); if (body.length > 1_000_000) { reject(new Error('Слишком большой запрос')); req.destroy(); } });
-    req.on('end', () => { if (!body) return resolve({}); try { resolve(JSON.parse(body)); } catch { reject(new Error('Некорректный JSON')); } });
+    let rejected = false;
+    req.on('data', chunk => {
+      if (rejected) return;
+      body += chunk.toString();
+      if (body.length > 1_000_000) {
+        rejected = true;
+        reject(Object.assign(new Error('Слишком большой запрос'), { statusCode: 413 }));
+        req.pause();
+      }
+    });
+    req.on('end', () => {
+      if (rejected) return;
+      if (!body) return resolve({});
+      try {
+        const value = JSON.parse(body);
+        if (!value || typeof value !== 'object' || Array.isArray(value)) {
+          throw new Error('Некорректный JSON');
+        }
+        resolve(value);
+      } catch {
+        reject(Object.assign(new Error('Некорректный JSON'), { statusCode: 400 }));
+      }
+    });
+    req.on('error', reject);
   });
 }
 function isDefaultBusy(doctorId, time) { return Boolean(DEFAULT_BUSY_SLOTS[doctorId] && DEFAULT_BUSY_SLOTS[doctorId][time]); }
@@ -95,7 +117,12 @@ function serveStatic(req, res, pathname) {
   if (pathname === '/' || pathname === '') filePath = path.join(PUBLIC_DIR, 'index.html');
   else if (pathname === '/admin') filePath = path.join(PUBLIC_DIR, 'admin.html');
   else filePath = path.join(PUBLIC_DIR, pathname.replace(/^\//, ''));
-  if (!filePath.startsWith(PUBLIC_DIR)) { res.writeHead(403); res.end('Forbidden'); return; }
+  const relative = path.relative(PUBLIC_DIR, filePath);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    res.writeHead(403);
+    res.end('Forbidden');
+    return;
+  }
   if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) filePath = path.join(PUBLIC_DIR, 'index.html');
   const ext = path.extname(filePath).toLowerCase();
   res.writeHead(200, { 'Content-Type': MIME_TYPES[ext] || 'application/octet-stream' });
@@ -295,7 +322,11 @@ const server = http.createServer(async (req, res) => {
       return await handleApi(req, res, pathname, requestUrl.searchParams);
     }
     return serveStatic(req, res, pathname);
-  } catch (error) { console.error(error); return sendError(res, 500, error.message || 'Внутренняя ошибка сервера.'); }
+  } catch (error) {
+    const status = error.statusCode || 500;
+    if (status === 500) console.error(error);
+    return sendError(res, status, status === 500 ? 'Внутренняя ошибка сервера.' : error.message);
+  }
 });
 server.listen(PORT, () => {
   console.log(`ArpiDent app запущен: http://localhost:${PORT}`);
