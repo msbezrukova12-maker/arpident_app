@@ -79,6 +79,14 @@ test('authentication, authorization, booking flow and persistence', async () => 
   try {
     await awaitReady(base, child);
     assert.equal((await request('/api/health')).status, 200);
+    assert.equal((await fetch(base + '/')).status, 200);
+    assert.equal((await fetch(base + '/admin')).status, 200);
+    assert.equal((await fetch(base + '/..%2Fserver.js')).status, 403);
+    assert.equal((await request('/api/slots?doctorId=1&date=2026-02-30')).status, 400);
+    const brokenJson = await fetch(base + '/api/admin/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{broken'
+    });
+    assert.equal(brokenJson.status, 400);
     assert.equal((await request('/api/bookings')).status, 401);
     assert.deepEqual((await request('/api/admin/session')).data, { authenticated: false });
     assert.equal((await request('/api/admin/login', 'POST', { login: 'demo-owner', password: 'bad' })).status, 401);
