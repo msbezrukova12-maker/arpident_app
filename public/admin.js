@@ -86,7 +86,7 @@ async function adminLogin() {
       method: 'POST',
       body: JSON.stringify({ login, password })
     });
-    sessionStorage.setItem('arpidentAdmin', '1');
+
     document.getElementById('loginPage').classList.add('hidden');
     document.getElementById('adminApp').classList.remove('hidden');
     await loadAdminData();
@@ -96,8 +96,8 @@ async function adminLogin() {
   }
 }
 
-function logoutAdmin() {
-  sessionStorage.removeItem('arpidentAdmin');
+async function logoutAdmin() {
+  await apiRequest('/api/logout', { method: 'POST' }).catch(() => null);
   document.getElementById('adminApp').classList.add('hidden');
   document.getElementById('loginPage').classList.remove('hidden');
 }
@@ -283,10 +283,16 @@ async function setStatus(id, status) {
   }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-  if (sessionStorage.getItem('arpidentAdmin') === '1') {
-    document.getElementById('loginPage').classList.add('hidden');
-    document.getElementById('adminApp').classList.remove('hidden');
-    loadAdminData();
+document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    const session = await apiRequest('/api/admin/session');
+    if (session.authenticated) {
+      document.getElementById('loginPage').classList.add('hidden');
+      document.getElementById('adminApp').classList.remove('hidden');
+      await loadAdminData();
+    }
+  } catch {
+    document.getElementById('adminApp').classList.add('hidden');
+    document.getElementById('loginPage').classList.remove('hidden');
   }
 });

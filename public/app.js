@@ -3,7 +3,7 @@ let state = {
   services: [],
   reviews: [],
   bookings: [],
-  currentUser: JSON.parse(localStorage.getItem('arpident_user') || 'null'),
+  currentUser: null,
   booking: { step: 1, service: null, doctor: null, date: null, time: null },
   authMode: 'login'
 };
@@ -21,6 +21,10 @@ const week = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
 const month = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
 
 function qs(id) { return document.getElementById(id); }
+function escapeHtml(value = '') {
+  return String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;');
+}
 async function api(url, options = {}) {
   const res = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...options });
   const data = await res.json().catch(() => ({}));
@@ -62,6 +66,7 @@ async function init() {
     state.services = services;
     state.reviews = reviews;
   } catch (e) { toast('Не удалось загрузить данные сайта', 'error'); }
+  state.currentUser = await api('/api/users/me').catch(() => null);
   updateLoginLabel();
   renderHome(); renderServices(); renderDoctors(); prepareReviews(); renderReviews(); renderCabinet(); initBooking();
 }
@@ -107,8 +112,8 @@ function doctorCard(d) {
 function reviewCard(r) {
   return `<article class="review-card">
     <div class="stars">${stars(r.rating)}</div>
-    <p>${r.text}</p>
-    <div class="review-author"><b>${r.name || r.patient_name}</b><span>${r.date || ''}</span></div>
+    <p>${escapeHtml(r.text)}</p>
+    <div class="review-author"><b>${escapeHtml(r.name || r.patient_name)}</b><span>${escapeHtml(r.date || '')}</span></div>
   </article>`;
 }
 
@@ -216,8 +221,8 @@ function renderBookingForm(box) {
       ${state.booking.doctor?.name || ''}<br>${fmtDate(state.booking.date)}, ${state.booking.time || ''}
     </div>
     <form class="form-grid" onsubmit="submitBooking(event)">
-      <div class="form-grid two"><input id="patientName" placeholder="Имя и фамилия" value="${user.name || ''}" required><input id="patientPhone" placeholder="Телефон" value="${user.phone || ''}" required></div>
-      <input id="patientEmail" placeholder="Email" value="${user.email || ''}">
+      <div class="form-grid two"><input id="patientName" placeholder="Имя и фамилия" value="${escapeHtml(user.name || '')}" required><input id="patientPhone" placeholder="Телефон" value="${escapeHtml(user.phone || '')}" required></div>
+      <input id="patientEmail" placeholder="Email" value="${escapeHtml(user.email || '')}">
       <textarea id="patientComment" placeholder="Комментарий к записи"></textarea>
       <label style="display:flex;gap:10px;align-items:flex-start;color:var(--muted);font-size:14px"><input type="checkbox" id="agree" required style="width:auto;margin-top:4px"> Я согласен(на) на обработку персональных данных</label>
       <div class="booking-actions"><button type="button" class="btn btn-secondary" onclick="setStep(3)">Назад</button><button class="btn btn-primary">Подтвердить запись</button></div>
@@ -242,7 +247,7 @@ async function submitBooking(e) {
 
 async function refreshBookings() {
   if (!state.currentUser) { state.bookings = []; return; }
-  state.bookings = await api(`/api/bookings?userId=${state.currentUser.id}`);
+  state.bookings = await api('/api/bookings');
 }
 
 function prepareReviews() {
@@ -286,14 +291,26 @@ async function submitReview(e) {
 function scrollToReviewForm() { qs('reviewForm')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
 
 function updateLoginLabel() { qs('loginLabel').textContent = state.currentUser ? 'Кабинет' : 'Личный кабинет'; }
-function saveUser(user) { state.currentUser = user; localStorage.setItem('arpident_user', JSON.stringify(user)); updateLoginLabel(); }
-function logout() { state.currentUser = null; localStorage.removeItem('arpident_user'); updateLoginLabel(); renderCabinet(); }
+function saveUser(user) { state.currentUser = user; updateLoginLabel(); }
+async function logout() {
+  await api('/api/logout', { method: 'POST' }).catch(() => null);
+  state.currentUser = null;
+  state.bookings = [];
+  updateLoginLabel();
+  renderCabinet();
+}
 async function renderCabinet() {
   const box = qs('cabinetContent'); if (!box) return;
   if (!state.currentUser) { return renderAuth(box); }
-  await refreshBookings().catch(() => {});
-  box.innerHTML = `<div class="page-card"><div class="page-title-row"><div><div class="eyebrow">Личный кабинет</div><h1>${state.currentUser.name}</h1></div><button class="btn btn-secondary" onclick="logout()">Выйти</button></div>
-    <p>${state.currentUser.phone || ''} ${state.currentUser.email ? ' · ' + state.currentUser.email : ''}</p>
+  try {
+    await refreshBookings();
+  } catch {
+    state.currentUser = null;
+    updateLoginLabel();
+    return renderAuth(box);
+  }
+  box.innerHTML = `<div class="page-card"><div class="page-title-row"><div><div class="eyebrow">Личный кабинет</div><h1>${escapeHtml(state.currentUser.name)}</h1></div><button class="btn btn-secondary" onclick="logout()">Выйти</button></div>
+    <p>${escapeHtml(state.currentUser.phone || '')} ${state.currentUser.email ? ' · ' + escapeHtml(state.currentUser.email) : ''}</p>
     <h2>Мои записи</h2>
     ${state.bookings.length ? state.bookings.map(bookingItem).join('') : '<p>Активных записей пока нет.</p>'}
     <button class="btn btn-primary" onclick="showSection('booking')">Записаться на приём</button></div>`;
@@ -308,7 +325,7 @@ function loginForm() { return `<form class="auth-box" onsubmit="loginUser(event)
 function registerForm() { return `<form class="auth-box" onsubmit="registerUser(event)"><input id="regName" placeholder="Имя и фамилия" required><input id="regPhone" placeholder="Телефон" required><input id="regEmail" placeholder="Email"><input id="regPassword" type="password" placeholder="Пароль" required><button class="btn btn-primary">Зарегистрироваться</button></form>`; }
 async function loginUser(e) { e.preventDefault(); try { const user = await api('/api/users/login', { method:'POST', body: JSON.stringify({ login: qs('loginValue').value, password: qs('loginPassword').value }) }); saveUser(user); renderCabinet(); toast('Вы вошли в кабинет'); } catch(err) { toast(err.message,'error'); } }
 async function registerUser(e) { e.preventDefault(); try { const user = await api('/api/users/register', { method:'POST', body: JSON.stringify({ name: qs('regName').value, phone: qs('regPhone').value, email: qs('regEmail').value, password: qs('regPassword').value }) }); saveUser(user); renderCabinet(); toast('Регистрация выполнена'); } catch(err) { toast(err.message,'error'); } }
-function bookingItem(b) { return `<div class="booking-item"><div class="booking-item-head"><b>${fmtDate(b.date)}, ${b.time}</b><span class="status ${b.status}">${statusText(b.status)}</span></div><p>${b.service}<br>${b.doctorName}</p>${b.status === 'new' || b.status === 'confirmed' ? `<button class="btn btn-secondary" onclick="cancelBooking(${b.id})">Отменить</button>` : ''}</div>`; }
+function bookingItem(b) { return `<div class="booking-item"><div class="booking-item-head"><b>${fmtDate(b.date)}, ${escapeHtml(b.time)}</b><span class="status ${escapeHtml(b.status)}">${statusText(b.status)}</span></div><p>${escapeHtml(b.service)}<br>${escapeHtml(b.doctorName)}</p>${b.status === 'new' || b.status === 'confirmed' ? `<button class="btn btn-secondary" onclick="cancelBooking(${Number(b.id)})">Отменить</button>` : ''}</div>`; }
 async function cancelBooking(id) { try { await api(`/api/bookings/${id}/status`, { method:'PATCH', body: JSON.stringify({ status:'cancelled' }) }); await refreshBookings(); renderCabinet(); toast('Запись отменена'); } catch(err) { toast(err.message, 'error'); } }
 
 function toast(text, type='success') {

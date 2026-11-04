@@ -3,6 +3,11 @@ const fs = require('fs');
 const path = require('path');
 const { URL } = require('url');
 const { readDb, writeDb, findService } = require('./database');
+const {
+  hashPassword, verifyPassword, secureEquals, createSession,
+  getSession, clearSession, loginAllowed, recordLoginFailure,
+  resetLoginFailures, originAllowed
+} = require('./security');
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -34,7 +39,11 @@ const MIME_TYPES = {
   '.ico': 'image/x-icon'
 };
 
-function isValidDate(date) { return /^\d{4}-\d{2}-\d{2}$/.test(date); }
+function isValidDate(date) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
+  const value = new Date(date + 'T00:00:00Z');
+  return !Number.isNaN(value.getTime()) && value.toISOString().slice(0, 10) === date;
+}
 function isActiveStatus(status) { return status === 'new' || status === 'confirmed'; }
 function timeToMinutes(time) { const [h, m] = String(time).split(':').map(Number); return h * 60 + m; }
 
@@ -54,13 +63,42 @@ function isPastSlot(date, time) {
   return timeToMinutes(time) <= getMoscowMinutes();
 }
 
-function sendJson(res, status, payload) { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(payload)); }
+function sendJson(res, status, payload) {
+  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+  res.end(JSON.stringify(payload));
+}
+function safeUser(user) {
+  const { password, passwordHash, ...rest } = user;
+  return rest;
+}
 function sendError(res, status, message) { sendJson(res, status, { error: message }); }
 function parseBody(req) {
   return new Promise((resolve, reject) => {
     let body = '';
-    req.on('data', chunk => { body += chunk.toString(); if (body.length > 1_000_000) { reject(new Error('Слишком большой запрос')); req.destroy(); } });
-    req.on('end', () => { if (!body) return resolve({}); try { resolve(JSON.parse(body)); } catch { reject(new Error('Некорректный JSON')); } });
+    let rejected = false;
+    req.on('data', chunk => {
+      if (rejected) return;
+      body += chunk.toString();
+      if (body.length > 1_000_000) {
+        rejected = true;
+        reject(Object.assign(new Error('Слишком большой запрос'), { statusCode: 413 }));
+        req.pause();
+      }
+    });
+    req.on('end', () => {
+      if (rejected) return;
+      if (!body) return resolve({});
+      try {
+        const value = JSON.parse(body);
+        if (!value || typeof value !== 'object' || Array.isArray(value)) {
+          throw new Error('Некорректный JSON');
+        }
+        resolve(value);
+      } catch {
+        reject(Object.assign(new Error('Некорректный JSON'), { statusCode: 400 }));
+      }
+    });
+    req.on('error', reject);
   });
 }
 function isDefaultBusy(doctorId, time) { return Boolean(DEFAULT_BUSY_SLOTS[doctorId] && DEFAULT_BUSY_SLOTS[doctorId][time]); }
@@ -79,7 +117,12 @@ function serveStatic(req, res, pathname) {
   if (pathname === '/' || pathname === '') filePath = path.join(PUBLIC_DIR, 'index.html');
   else if (pathname === '/admin') filePath = path.join(PUBLIC_DIR, 'admin.html');
   else filePath = path.join(PUBLIC_DIR, pathname.replace(/^\//, ''));
-  if (!filePath.startsWith(PUBLIC_DIR)) { res.writeHead(403); res.end('Forbidden'); return; }
+  const relative = path.relative(PUBLIC_DIR, filePath);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    res.writeHead(403);
+    res.end('Forbidden');
+    return;
+  }
   if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) filePath = path.join(PUBLIC_DIR, 'index.html');
   const ext = path.extname(filePath).toLowerCase();
   res.writeHead(200, { 'Content-Type': MIME_TYPES[ext] || 'application/octet-stream' });
@@ -87,6 +130,19 @@ function serveStatic(req, res, pathname) {
 }
 
 async function handleApi(req, res, pathname, searchParams) {
+  const session = getSession(req);
+  if (req.method === 'POST' && pathname === '/api/logout') {
+    clearSession(req, res);
+    return sendJson(res, 200, { success: true });
+  }
+  if (req.method === 'GET' && pathname === '/api/admin/session') {
+    return sendJson(res, 200, { authenticated: Boolean(session && session.role === 'admin') });
+  }
+  if (req.method === 'GET' && pathname === '/api/users/me') {
+    if (!session || session.role !== 'user') return sendError(res, 401, 'Войдите в личный кабинет.');
+    const user = readDb().users.find(item => item.id === session.userId);
+    return user ? sendJson(res, 200, safeUser(user)) : sendError(res, 401, 'Сессия недействительна.');
+  }
   if (req.method === 'GET' && pathname === '/api/health') return sendJson(res, 200, { ok: true, service: 'ArpiDent API', moscowToday: getMoscowTodayISO() });
   if (req.method === 'GET' && pathname === '/api/doctors') return sendJson(res, 200, readDb().doctors);
   if (req.method === 'GET' && pathname === '/api/services') return sendJson(res, 200, readDb().services);
@@ -97,39 +153,46 @@ async function handleApi(req, res, pathname, searchParams) {
     const name = String(body.name || '').trim();
     const phone = String(body.phone || '').trim();
     const email = String(body.email || '').trim().toLowerCase();
-    const password = String(body.password || '').trim();
-    if (!name) return sendError(res, 400, 'Введите имя.');
-    if (!phone) return sendError(res, 400, 'Введите телефон.');
-    if (!password || password.length < 4) return sendError(res, 400, 'Пароль должен быть не короче 4 символов.');
+    const password = String(body.password || '');
+    if (!name || name.length > 120) return sendError(res, 400, 'Введите корректное имя.');
+    if (!phone || phone.length > 40) return sendError(res, 400, 'Введите корректный телефон.');
+    if (email.length > 160) return sendError(res, 400, 'Слишком длинный email.');
+    if (password.length < 8 || password.length > 128) return sendError(res, 400, 'Пароль должен содержать от 8 до 128 символов.');
     const exists = data.users.find(u => (email && u.email === email) || u.phone === phone);
     if (exists) return sendError(res, 409, 'Пользователь с таким телефоном или email уже зарегистрирован.');
-    const user = { id: data.counters.users++, name, phone, email, password, createdAt: new Date().toISOString() };
+    const user = { id: data.counters.users++, name, phone, email, passwordHash: hashPassword(password), createdAt: new Date().toISOString() };
     data.users.push(user);
     writeDb(data);
-    const { password: _, ...safeUser } = user;
-    return sendJson(res, 201, safeUser);
+    createSession(req, res, 'user', user.id);
+    return sendJson(res, 201, safeUser(user));
   }
 
   if (req.method === 'POST' && pathname === '/api/users/login') {
     const body = await parseBody(req);
     const data = readDb();
     const login = String(body.login || '').trim().toLowerCase();
-    const password = String(body.password || '').trim();
-    const user = data.users.find(u => (u.email === login || u.phone === login) && u.password === password);
-    if (!user) return sendError(res, 401, 'Неверный телефон/email или пароль.');
-    const { password: _, ...safeUser } = user;
-    return sendJson(res, 200, safeUser);
+    const password = String(body.password || '');
+    const attemptKey = 'patient:' + (req.socket.remoteAddress || 'unknown') + ':' + login;
+    if (!loginAllowed(attemptKey)) return sendError(res, 429, 'Слишком много попыток. Попробуйте позже.');
+    const user = data.users.find(u => (u.email && u.email === login) || u.phone === login);
+    if (!user || !verifyPassword(password, user.passwordHash)) {
+      recordLoginFailure(attemptKey);
+      return sendError(res, 401, 'Неверный телефон/email или пароль.');
+    }
+    resetLoginFailures(attemptKey);
+    createSession(req, res, 'user', user.id);
+    return sendJson(res, 200, safeUser(user));
   }
 
   if (req.method === 'GET' && pathname === '/api/bookings') {
-    const data = readDb();
-    let bookings = [...data.bookings];
-    const userId = Number(searchParams.get('userId') || 0);
-    const phone = String(searchParams.get('phone') || '').trim();
-    const email = String(searchParams.get('email') || '').trim().toLowerCase();
-    if (userId || phone || email) {
-      bookings = bookings.filter(b => (userId && b.userId === userId) || (phone && b.phone === phone) || (email && String(b.email).toLowerCase() === email));
+    if (!session) return sendError(res, 401, 'Требуется авторизация.');
+    if (session.role === 'user' && searchParams.has('userId') && Number(searchParams.get('userId')) !== session.userId) {
+      return sendError(res, 403, 'Нет доступа к чужим записям.');
     }
+    const data = readDb();
+    const bookings = session.role === 'admin'
+      ? [...data.bookings]
+      : data.bookings.filter(booking => booking.userId === session.userId);
     bookings.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
     return sendJson(res, 200, bookings);
   }
@@ -158,7 +221,7 @@ async function handleApi(req, res, pathname, searchParams) {
     const comment = String(body.comment || '').trim();
     const doctorId = Number(body.doctor_id || body.doctorId);
     const serviceId = Number(body.service_id || body.serviceId);
-    const userId = body.user_id || body.userId ? Number(body.user_id || body.userId) : null;
+    const userId = session && session.role === 'user' ? session.userId : null;
     const fallbackServiceName = String(body.service_name || body.service || '').trim();
     const fallbackServicePrice = String(body.service_price || body.servicePrice || '').trim();
     const date = String(body.date || '').trim();
@@ -185,18 +248,27 @@ async function handleApi(req, res, pathname, searchParams) {
 
   const statusMatch = pathname.match(/^\/api\/bookings\/(\d+)\/status$/);
   if (req.method === 'PATCH' && statusMatch) {
+    if (!session) return sendError(res, 401, 'Требуется авторизация.');
     const body = await parseBody(req); const data = readDb(); const id = Number(statusMatch[1]);
     const status = String(body.status || '').trim(); const allowedStatuses = ['new', 'confirmed', 'cancelled', 'done'];
     if (!allowedStatuses.includes(status)) return sendError(res, 400, 'Некорректный статус записи.');
     const booking = data.bookings.find(item => item.id === id); if (!booking) return sendError(res, 404, 'Запись не найдена.');
+    const admin = session.role === 'admin';
+    if (!admin && (session.role !== 'user' || booking.userId !== session.userId || status !== 'cancelled')) {
+      return sendError(res, 403, 'Недостаточно прав для изменения записи.');
+    }
     if (isActiveStatus(status) && isSlotBusy(data, booking.doctorId, booking.date, booking.time, id)) return sendError(res, 409, 'Нельзя активировать запись: это время уже занято.');
     booking.status = status; writeDb(data); return sendJson(res, 200, booking);
   }
 
   const deleteMatch = pathname.match(/^\/api\/bookings\/(\d+)$/);
   if (req.method === 'DELETE' && deleteMatch) {
+    if (!session) return sendError(res, 401, 'Требуется авторизация.');
     const data = readDb(); const id = Number(deleteMatch[1]); const booking = data.bookings.find(item => item.id === id);
     if (!booking) return sendError(res, 404, 'Запись не найдена.');
+    if (session.role !== 'admin' && (session.role !== 'user' || booking.userId !== session.userId)) {
+      return sendError(res, 403, 'Недостаточно прав для отмены записи.');
+    }
     booking.status = 'cancelled'; writeDb(data); return sendJson(res, 200, booking);
   }
 
@@ -219,9 +291,20 @@ async function handleApi(req, res, pathname, searchParams) {
   }
 
   if (req.method === 'POST' && pathname === '/api/admin/login') {
-    const body = await parseBody(req); const data = readDb(); const login = String(body.login || '').trim(); const password = String(body.password || '').trim();
-    const admin = data.admins.find(item => item.login === login && item.password === password);
-    if (!admin) return sendError(res, 401, 'Неверный логин или пароль.');
+    if (!process.env.ADMIN_LOGIN || !process.env.ADMIN_PASSWORD || process.env.ADMIN_PASSWORD.length < 12) {
+      return sendError(res, 503, 'Доступ администратора не настроен.');
+    }
+    const ip = req.socket.remoteAddress || 'unknown';
+    if (!loginAllowed(ip)) return sendError(res, 429, 'Слишком много попыток. Попробуйте позже.');
+    const body = await parseBody(req);
+    const login = String(body.login || '').trim();
+    const password = String(body.password || '');
+    if (!secureEquals(login, process.env.ADMIN_LOGIN) || !secureEquals(password, process.env.ADMIN_PASSWORD)) {
+      recordLoginFailure(ip);
+      return sendError(res, 401, 'Неверный логин или пароль.');
+    }
+    resetLoginFailures(ip);
+    createSession(req, res, 'admin');
     return sendJson(res, 200, { success: true, message: 'Вход выполнен.' });
   }
 
@@ -232,9 +315,18 @@ const server = http.createServer(async (req, res) => {
   try {
     const requestUrl = new URL(req.url, `http://${req.headers.host}`);
     const pathname = decodeURIComponent(requestUrl.pathname);
-    if (pathname.startsWith('/api/')) return await handleApi(req, res, pathname, requestUrl.searchParams);
+    if (pathname.startsWith('/api/')) {
+      if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && !originAllowed(req)) {
+        return sendError(res, 403, 'Запрос с другого сайта запрещён.');
+      }
+      return await handleApi(req, res, pathname, requestUrl.searchParams);
+    }
     return serveStatic(req, res, pathname);
-  } catch (error) { console.error(error); return sendError(res, 500, error.message || 'Внутренняя ошибка сервера.'); }
+  } catch (error) {
+    const status = error.statusCode || 500;
+    if (status === 500) console.error(error);
+    return sendError(res, status, status === 500 ? 'Внутренняя ошибка сервера.' : error.message);
+  }
 });
 server.listen(PORT, () => {
   console.log(`ArpiDent app запущен: http://localhost:${PORT}`);
